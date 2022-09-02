@@ -62,7 +62,7 @@ class RPCA(PCA):
             target_type=numbers.Integral
         )
 
-        self._fit(X)
+        self.LU_, self.LS_, self.VT_ = self._fit(X)
         return self
 
     def _fit(self, X):
@@ -236,3 +236,7 @@ class RPCA(PCA):
         LU *= LS[: self.n_components_]
 
         return LU
+
+    @property
+    def s_(self):
+        return self.LS_
