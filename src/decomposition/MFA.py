@@ -1,25 +1,29 @@
 import numpy as np
 import pandas as pd
 from sklearn.utils import check_array
-from sklearn.utils.validation import check_is_fitted
 from prince import MFA, MCA
-from RPCA import RPCA
+
+from src.decomposition.RPCA import RPCA
 
 
-class RMFA(MFA):
+class RFAMD(MFA):
 
-    def __init__(self, groups=None, normalize=True, n_components=2, n_iter=10,
+    def __init__(self, normalize=True, hard_threshold=False, pca_n_components=2, mca_n_components=2, n_iter=10,
                  copy=True, check_input=True, random_state=None, engine='auto'):
         super().__init__(
-            n_components=n_components,
+            n_components=pca_n_components,
             n_iter=n_iter,
-            groups=groups,
             normalize=normalize,
             copy=copy,
             check_input=check_input,
             random_state=random_state,
             engine=engine
         )
+        if hard_threshold:
+            raise NotImplementedError
+        else:
+            self.mca_n_components = mca_n_components
+        self.groups = None
 
     def fit(self, X, y=None):
         self._fit(X)
@@ -27,15 +31,16 @@ class RMFA(MFA):
 
     def _fit(self, X):
 
-        if self.groups is None:
-            raise ValueError("Groups have to be specified")
-
         if self.check_input:
-            check_array(X, dtype=[str, np.number])
+            check_array(X, dtype=[np.chararray, np.number])
 
         X = super()._prepare_input(X)
 
-        self._check_group_type_consistency(X)
+        self._one_group_per_variable_type(X)
+        self._check_group_consistency(X)
+
+        # numeric_data_aspect_ratio = self.groups['Numerical'].shape[1]/self.groups['Numerical'].shape[0]
+        # categorical_data_aspect_ratio = self.groups['Categorical'].shape[1]/self.groups['Categorical'].shape[0]
 
         self.partial_factor_analysis_ = {}
         for name, cols in sorted(self.groups.items()):
@@ -47,7 +52,7 @@ class RMFA(MFA):
                 )
             else:
                 fa = MCA(
-                    n_components=self.n_components,
+                    n_components=self.mca_n_components,
                     n_iter=self.n_iter,
                     copy=self.copy,
                     random_state=self.random_state,
@@ -58,7 +63,23 @@ class RMFA(MFA):
         # Replace this with something better later on
         super(type(self).__bases__[0], self).fit(super()._build_X_global(X))
 
-    def _check_group_type_consistency(self, X):
+    def _one_group_per_variable_type(self, X):
+        num_cols = X.select_dtypes(np.number).columns.tolist()
+        cat_cols = X.select_dtypes(np.chararray).columns.tolist()
+
+        self.groups = {}
+        if num_cols:
+            self.groups['Numerical'] = num_cols
+        else:
+            raise ValueError('FAMD assumes that X has both categorical and numerical data. No numerical data.')
+
+        if cat_cols:
+            self.groups['Categorical'] = cat_cols
+        else:
+            raise ValueError('FAMD assumes that X has both categorical and numerical data. No categorical data.')
+
+    def _check_group_consistency(self, X):
+        # Check group types are consistent
         self.all_nums_ = {}
         for name, cols in sorted(self.groups.items()):
             all_num = all(pd.api.types.is_numeric_dtype(X[c]) for c in cols)
@@ -69,3 +90,4 @@ class RMFA(MFA):
 
     def transform(self, X):
         return super().transform(X)
+

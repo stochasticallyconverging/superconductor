@@ -3,6 +3,7 @@ import warnings
 
 
 import numpy as np
+import pandas as pd
 from scipy import linalg
 from scipy.sparse.linalg import svds
 from sklearn.decomposition import PCA
@@ -62,7 +63,7 @@ class RPCA(PCA):
             target_type=numbers.Integral
         )
 
-        self.LU_, self.LS_, self.VT_ = self._fit(X)
+        self.LU_, self.LS_, self.LVT_ = self._fit(X)
         return self
 
     def _fit(self, X):
@@ -92,6 +93,7 @@ class RPCA(PCA):
             else:
                 self._fit_svt_svd_solver = "full"
 
+        self.n_components_ = self.n_components
         L, Sp = self._alternating_directions_solver(X, MU, LAMBDA, THRESHOLD, n_components)
         self.L_ = L[:, : self.n_components_]
         self.Sp_ = Sp[: self.n_components_]
@@ -214,7 +216,10 @@ class RPCA(PCA):
 
     @staticmethod
     def _compute_rpca_parameters(X, svt_tol):
-        mu = X.shape[0]*X.shape[1]/(4*np.sum(np.abs(X.reshape(-1))))
+        if isinstance(X, pd.DataFrame):
+            mu = X.shape[0]*X.shape[1]/(4*np.sum(np.abs(X.to_numpy().reshape(-1))))
+        else:
+            mu = X.shape[0]*X.shape[1]/(4*np.sum(np.abs(X.reshape(-1))))
         lambd = 1/np.sqrt(max(X.shape))
         thresh = svt_tol * np.linalg.norm(X)
         return mu, lambd, thresh
@@ -225,17 +230,12 @@ class RPCA(PCA):
         return np.sign(X) * np.maximum(Y, np.zeros_like(Y))
 
     def transform(self, X):
-        X_transformed = np.dot(X, self.components_.T)
-        if self.add_sparse:
-            X_transformed += self.Sp_
+        X_transformed = X @ self.components_.T
         return X_transformed
 
     def fit_transform(self, X, y=None):
-        LU, LS, LVT = self._fit(X)
-        LU = LU[:, : self.n_components_]
-        LU *= LS[: self.n_components_]
-
-        return LU
+        self.fit(X)
+        return self.transform(X)
 
     @property
     def s_(self):
